@@ -1,6 +1,6 @@
 {
   "name": "expo-job-queue",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "An SQLite based job queue for Expo",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
@@ -116,11 +116,10 @@
       "prettier/prettier": [
         "error",
         {
-          "quoteProps": "consistent",
-          "singleQuote": true,
-          "tabWidth": 2,
-          "trailingComma": "es5",
-          "useTabs": false
+          "printWidth": 100,
+          "semi": false,
+          "singleQuote": false,
+          "trailingComma": "all"
         }
       ]
     }
@@ -130,11 +129,10 @@
     "lib/"
   ],
   "prettier": {
-    "quoteProps": "consistent",
-    "singleQuote": true,
-    "tabWidth": 2,
-    "trailingComma": "es5",
-    "useTabs": false
+    "printWidth": 100,
+    "semi": false,
+    "singleQuote": false,
+    "trailingComma": "all"
   },
   "react-native-builder-bob": {
     "source": "src",
@@ -149,5 +147,9 @@
         }
       ]
     ]
+  },
+  "dependencies": {
+    "expo-sqlite": "^9.1.0",
+    "react-native-unimodules": "^0.13.3"
   }
 }

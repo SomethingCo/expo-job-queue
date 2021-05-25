@@ -1,0 +1,129 @@
+import * as SQLite from "expo-sqlite"
+import type { RawJob } from "./types"
+
+const mapColumnsToJob = (row: Record<string, any>): RawJob => {
+  return {
+    id: row.id,
+    attempts: row.attempts,
+    created: row.created,
+    failed: row.failed,
+    active: row.active,
+    metaData: row.meta_data,
+    payload: row.payload,
+    priority: row.priority,
+    timeout: row.timeout,
+    workerName: row.worker_name,
+  }
+}
+
+export class QueueStore {
+  private static _instance: QueueStore
+  private _db: SQLite.WebSQLDatabase
+
+  constructor() {
+    this._db = SQLite.openDatabase("queue.db")
+    this._db.transaction((tx) => {
+      tx.executeSql(
+        `CREATE TABLE IF NOT EXISTS Job(
+        id CHAR(36) PRIMARY KEY NOT NULL,
+        worker_name CHAR(255) NOT NULL,
+        active INTEGER NOT NULL,
+        payload CHAR(1024),
+        meta_data CHAR(1024),
+        attempts INTEGER NOT NULL,
+        created CHAR(255),
+        failed CHAR(255),
+        timeout INTEGER NOT NULL,
+        priority Integer NOT NULL
+        );`,
+      )
+    })
+  }
+
+  static get instance() {
+    if (this._instance) {
+      return this._instance
+    } else {
+      this._instance = new QueueStore()
+      return this._instance
+    }
+  }
+
+  private query<T = any>(query: string, args: any[] = []): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this._db.transaction((tx) => {
+        tx.executeSql(
+          query,
+          args,
+          // @ts-ignore
+          (_, { rows: { _array } }) => resolve((_array ?? []).map(mapColumnsToJob)),
+          () => {
+            reject(new Error("SQL query failed"))
+            return true
+          },
+        )
+      })
+    })
+  }
+
+  private getJobsByQuery(query: string, args: any[] = []): Promise<RawJob[]> {
+    return this.query<RawJob[]>(query, args)
+  }
+
+  async getJobs(): Promise<RawJob[]> {
+    return this.getJobsByQuery("SELECT * FROM job ORDER BY priority DESC,datetime(created);")
+  }
+
+  async getActiveMarkedJobs(): Promise<RawJob[]> {
+    return this.getJobsByQuery("SELECT * FROM job WHERE active == 1;")
+  }
+
+  async getNextJob(): Promise<RawJob | {}> {
+    const [job] = await this.getJobsByQuery(
+      "SELECT * FROM job WHERE active == 0 AND failed == '' ORDER BY priority DESC,datetime(created) LIMIT 1;",
+    )
+    return job ?? {}
+  }
+
+  async getJobsForWorker(worker: string, count: number): Promise<RawJob[]> {
+    return this.getJobsByQuery(
+      "SELECT * FROM job WHERE active == 0 AND failed == '' AND worker_name == ? ORDER BY priority DESC,datetime(created) LIMIT ?;",
+      [worker, count],
+    )
+  }
+
+  async removeJob(job: RawJob) {
+    await this.query("DELETE FROM job WHERE id = ?;", [job.id])
+  }
+
+  async removeJobsByWorkerName(name: string) {
+    await this.query("DELETE FROM job WHERE worker_name = ?;", [name])
+  }
+
+  async updateJob(job: RawJob) {
+    await this.query(
+      "UPDATE job SET active = ?, failed = ?, meta_data = ?, attempts = ? WHERE id = ?;",
+      [job.active, job.failed, job.metaData, job.attempts, job.id],
+    )
+  }
+
+  async addJob(job: RawJob) {
+    await this.query(
+      "INSERT INTO job (id, worker_name, active, payload, meta_data, attempts, created, failed,timeout,priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      [
+        job.id,
+        job.workerName,
+        job.active,
+        job.payload,
+        job.metaData,
+        job.attempts,
+        job.created,
+        job.failed,
+        job.timeout,
+        job.priority,
+      ],
+    )
+  }
+}
+
+export default QueueStore.instance
