@@ -1,0 +1,22 @@
+{
+  "name": "expo-job-queue-example",
+  "displayName": "ExpoJobQueue Example",
+  "expo": {
+    "name": "expo-job-queue-example",
+    "slug": "expo-job-queue-example",
+    "description": "Example app for expo-job-queue",
+    "privacy": "public",
+    "version": "1.0.0",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ]
+  }
+}
