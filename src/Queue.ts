@@ -163,7 +163,7 @@ export class Queue {
   addJob<P extends Record<string, unknown>>(
     workerName: string,
     payload: P,
-    options = { attempts: 0, timeout: 0, priority: 0 },
+    options: { attempts?: number; timeout?: number; priority?: number } = {},
     startQueue = true,
   ) {
     const { attempts = 0, timeout = 0, priority = 0 } = options
