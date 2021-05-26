@@ -2,6 +2,7 @@ import store, { QueueStore } from "./QueueStore"
 import { FALSE, Job, RawJob } from "./types"
 import { noop, Uuid } from "./utils"
 import { CANCEL, Worker, WorkerOptions } from "./Worker"
+import add from "date-fns/add"
 
 /**
  * Options to configure the queue
@@ -16,6 +17,13 @@ export interface QueueOptions {
    * Interval in which the queue checks for new jobs to execute
    */
   updateInterval?: number
+  /**
+   * Interval in which the queue checks for schedueld jobs in the future (-1 to disable)
+   */
+  futureInterval?: number
+  /**
+   * How many jobs should a worker be able to run at the same time (-1 for unlimited)
+   */
   concurrency?: number
 }
 /**
@@ -68,11 +76,13 @@ export class Queue {
   private isActive: boolean
 
   private timeoutId?: ReturnType<typeof setTimeout>
+  private futureTimeoutId?: ReturnType<typeof setTimeout>
   private executedJobs: Array<Job<any>>
   private activeJobCount: number
 
   private concurrency: number
   private updateInterval: number
+  private futureInterval: number
   private onQueueFinish: (executedJobs: Array<Job<any>>) => void
 
   private queuedJobExecuter: any[] = []
@@ -85,10 +95,12 @@ export class Queue {
     this.isActive = false
 
     this.timeoutId = undefined
+    this.futureTimeoutId = undefined
     this.executedJobs = []
     this.activeJobCount = 0
 
     this.updateInterval = 10
+    this.futureInterval = 10 * 1000 // 10 seconds
     this.onQueueFinish = noop
     this.concurrency = -1
   }
@@ -115,9 +127,15 @@ export class Queue {
   }
 
   configure(options: QueueOptions) {
-    const { onQueueFinish = noop, updateInterval = 10, concurrency = -1 } = options
+    const {
+      onQueueFinish = noop,
+      updateInterval = 10,
+      concurrency = -1,
+      futureInterval = 10000,
+    } = options
     this.onQueueFinish = onQueueFinish
     this.updateInterval = updateInterval
+    this.futureInterval = futureInterval
     this.concurrency = concurrency
   }
 
@@ -134,7 +152,8 @@ export class Queue {
     options: WorkerOptions<P> = {},
   ) {
     if (this.workers[name]) {
-      throw new Error(`Worker "${name}" already exists.`)
+      console.warn(`Worker "${name}" already exists.`)
+      return
     }
     this.workers[name] = new Worker<P>(name, executer, options)
   }
@@ -163,17 +182,24 @@ export class Queue {
   addJob<P extends Record<string, unknown>>(
     workerName: string,
     payload: P,
-    options: { attempts?: number; timeout?: number; priority?: number } = {},
+    options: {
+      attempts?: number
+      timeout?: number
+      priority?: number
+      runIn?: Duration
+      retryIn?: Duration
+    } = {},
     startQueue = true,
   ) {
-    const { attempts = 0, timeout = 0, priority = 0 } = options
+    const { attempts = 0, timeout = 0, priority = 0, runIn, retryIn } = options
     const id: string = Uuid.v4()
     const job: RawJob = {
       id,
       payload: JSON.stringify(payload || {}),
-      metaData: JSON.stringify({ failedAttempts: 0, errors: [] }),
+      metaData: JSON.stringify({ failedAttempts: 0, errors: [], retryIn: retryIn }),
       active: FALSE,
       created: new Date().toISOString(),
+      scheduled_for: runIn ? add(new Date(), runIn).toISOString() : "now",
       failed: "",
       workerName,
       attempts,
@@ -299,11 +325,21 @@ export class Queue {
     return this.activeJobCount > 0
   }
 
-  private finishQueue() {
-    this.onQueueFinish(this.executedJobs)
-    this.isActive = false
+  private async finishQueue() {
     if (this.timeoutId) {
       clearTimeout(this.timeoutId)
+    }
+    if (this.futureTimeoutId) {
+      clearTimeout(this.futureTimeoutId)
+    }
+
+    // Reschedule future jobs
+    const hasFutureJobs = await this.jobStore.hasFutureJobs()
+    if (this.futureInterval > -1 && hasFutureJobs) {
+      this.futureTimeoutId = setTimeout(() => this.scheduleQueue(), this.futureInterval)
+    } else {
+      this.onQueueFinish(this.executedJobs)
+      this.isActive = false
     }
   }
 
@@ -351,14 +387,22 @@ export class Queue {
     } catch (error) {
       worker.triggerFailure(job, error)
       const { attempts } = rawJob
-      let { errors, failedAttempts } = JSON.parse(rawJob.metaData)
+      let { errors, failedAttempts, retryIn } = JSON.parse(rawJob.metaData)
       failedAttempts++
       let failed = ""
       if (failedAttempts >= attempts) {
         failed = new Date().toISOString()
       }
-      const metaData = JSON.stringify({ errors: [...errors, error], failedAttempts })
-      this.jobStore.updateJob({ ...rawJob, ...{ active: FALSE, metaData, failed } })
+      const metaData = JSON.stringify({ errors: [...errors, error], failedAttempts, retryIn })
+      this.jobStore.updateJob({
+        ...rawJob,
+        ...{
+          active: FALSE,
+          metaData,
+          failed,
+          scheduled_for: retryIn ? add(new Date(), retryIn).toISOString() : "now",
+        },
+      })
     } finally {
       delete this.runningJobPromises[job.id]
       worker.decreaseExecutionCount()

@@ -25,6 +25,7 @@ export interface RawJob {
   metaData: string
   attempts: number
   created: string
+  scheduled_for: string
   failed: string
   timeout: number
   priority: number

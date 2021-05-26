@@ -6,6 +6,7 @@ const mapColumnsToJob = (row: Record<string, any>): RawJob => {
     id: row.id,
     attempts: row.attempts,
     created: row.created,
+    scheduled_for: row.scheduled_for,
     failed: row.failed,
     active: row.active,
     metaData: row.meta_data,
@@ -32,6 +33,7 @@ export class QueueStore {
         meta_data CHAR(1024),
         attempts INTEGER NOT NULL,
         created CHAR(255),
+        scheduled_for CHAR(255) NOT NULL DEFAULT "now",
         failed CHAR(255),
         timeout INTEGER NOT NULL,
         priority Integer NOT NULL
@@ -56,9 +58,10 @@ export class QueueStore {
           query,
           args,
           // @ts-ignore
-          (_, { rows: { _array } }) => resolve((_array ?? []).map(mapColumnsToJob)),
-          () => {
-            reject(new Error("SQL query failed"))
+          (_, { rows: { _array } }) =>
+            resolve((_array ?? []).map((row: any) => (row?.id ? mapColumnsToJob(row) : row))),
+          (_, error) => {
+            reject(error)
             return true
           },
         )
@@ -71,25 +74,34 @@ export class QueueStore {
   }
 
   async getJobs(): Promise<RawJob[]> {
-    return this.getJobsByQuery("SELECT * FROM job ORDER BY priority DESC,datetime(created);")
+    return this.getJobsByQuery(
+      `SELECT * FROM job WHERE datetime("now") >= datetime(scheduled_for) ORDER BY priority DESC,datetime(created);`,
+    )
   }
 
   async getActiveMarkedJobs(): Promise<RawJob[]> {
-    return this.getJobsByQuery("SELECT * FROM job WHERE active == 1;")
+    return this.getJobsByQuery(`SELECT * FROM job WHERE active == 1;`)
   }
 
   async getNextJob(): Promise<RawJob | {}> {
     const [job] = await this.getJobsByQuery(
-      "SELECT * FROM job WHERE active == 0 AND failed == '' ORDER BY priority DESC,datetime(created) LIMIT 1;",
+      `SELECT * FROM job WHERE active == 0 AND failed == '' AND datetime("now") >= datetime(scheduled_for) ORDER BY priority DESC,datetime(created) LIMIT 1;`,
     )
     return job ?? {}
   }
 
   async getJobsForWorker(worker: string, count: number): Promise<RawJob[]> {
     return this.getJobsByQuery(
-      "SELECT * FROM job WHERE active == 0 AND failed == '' AND worker_name == ? ORDER BY priority DESC,datetime(created) LIMIT ?;",
+      `SELECT * FROM job WHERE active == 0 AND failed == '' AND worker_name == ? AND datetime("now") >= datetime(scheduled_for) ORDER BY priority DESC,datetime(created) LIMIT ?;`,
       [worker, count],
     )
+  }
+
+  async hasFutureJobs(): Promise<boolean> {
+    const [row] = await this.query<{ count: number }[]>(
+      `SELECT count(*) as count FROM job WHERE datetime(scheduled_for) >= datetime("now") AND failed == ''`,
+    )
+    return row.count > 0
   }
 
   async removeJob(job: RawJob) {
@@ -102,14 +114,14 @@ export class QueueStore {
 
   async updateJob(job: RawJob) {
     await this.query(
-      "UPDATE job SET active = ?, failed = ?, meta_data = ?, attempts = ? WHERE id = ?;",
-      [job.active, job.failed, job.metaData, job.attempts, job.id],
+      "UPDATE job SET active = ?, failed = ?, meta_data = ?, attempts = ?, scheduled_for = ? WHERE id = ?;",
+      [job.active, job.failed, job.metaData, job.attempts, job.scheduled_for, job.id],
     )
   }
 
   async addJob(job: RawJob) {
     await this.query(
-      "INSERT INTO job (id, worker_name, active, payload, meta_data, attempts, created, failed,timeout,priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      "INSERT INTO job (id, worker_name, active, payload, meta_data, attempts, created, failed, timeout, priority, scheduled_for) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
       [
         job.id,
         job.workerName,
@@ -121,6 +133,7 @@ export class QueueStore {
         job.failed,
         job.timeout,
         job.priority,
+        job.scheduled_for,
       ],
     )
   }
