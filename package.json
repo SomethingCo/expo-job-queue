@@ -1,6 +1,6 @@
 {
   "name": "expo-job-queue",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "An SQLite based job queue for Expo",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
