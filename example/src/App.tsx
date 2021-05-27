@@ -67,6 +67,12 @@ export default function App() {
         }}
         title="Remove Worker"
       />
+      <Button
+        onPress={() => {
+          ExpoJobQueue.removeAllJobsForWorker("testWorker")
+        }}
+        title="Cancel All Jobs"
+      />
     </View>
   )
 }

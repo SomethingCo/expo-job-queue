@@ -251,6 +251,18 @@ export class Queue {
     }
   }
 
+  async cancelAllJobsForWorker(workerName: string) {
+    const activeMarkedJobs = await this.jobStore.getActiveMarkedJobs()
+    activeMarkedJobs
+      .filter((job) => job.workerName === workerName)
+      .map((job) => this.cancelJob(job.id))
+  }
+
+  async removeAllJobsForWorker(workerName: string) {
+    this.cancelAllJobsForWorker(workerName)
+    await this.jobStore.removeJobsByWorkerName(workerName)
+  }
+
   private resetActiveJob = async (job: RawJob) => {
     this.jobStore.updateJob({ ...job, ...{ active: FALSE } })
   }
