@@ -97,11 +97,11 @@ export class QueueStore {
     )
   }
 
-  async hasFutureJobs(): Promise<boolean> {
-    const [row] = await this.query<{ count: number }[]>(
-      `SELECT count(*) as count FROM job WHERE datetime(scheduled_for) >= datetime("now") AND failed == ''`,
+  async hasFutureJobs(): Promise<number> {
+    const [row] = await this.query<{ seconds: number }[]>(
+      `SELECT abs((julianday("now") - julianday(scheduled_for)) * 86400.0) as seconds FROM job WHERE datetime(scheduled_for) >= datetime("now") AND failed == ''`,
     )
-    return row.count > 0
+    return row?.seconds ?? -1
   }
 
   async removeJob(job: RawJob) {

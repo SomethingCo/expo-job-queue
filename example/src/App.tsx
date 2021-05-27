@@ -63,6 +63,24 @@ export default function App() {
       />
       <Button
         onPress={() => {
+          setResult(null)
+          ExpoJobQueue.addJob(
+            "testWorker",
+            {
+              text: "I ran after 3 seconds",
+            },
+            {
+              runIn: {
+                seconds: 3,
+              },
+            },
+          )
+          ExpoJobQueue.start()
+        }}
+        title="Run in 3 Seconds"
+      />
+      <Button
+        onPress={() => {
           ExpoJobQueue.removeWorker("testWorker", true)
         }}
         title="Remove Worker"

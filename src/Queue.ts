@@ -82,7 +82,7 @@ export class Queue {
 
   private concurrency: number
   private updateInterval: number
-  private futureInterval: number
+  private maxFutureInterval: number
   private onQueueFinish: (executedJobs: Array<Job<any>>) => void
 
   private queuedJobExecuter: any[] = []
@@ -100,7 +100,7 @@ export class Queue {
     this.activeJobCount = 0
 
     this.updateInterval = 10
-    this.futureInterval = 10 * 1000 // 10 seconds
+    this.maxFutureInterval = 60 * 1000 // 60 seconds
     this.onQueueFinish = noop
     this.concurrency = -1
   }
@@ -131,11 +131,11 @@ export class Queue {
       onQueueFinish = noop,
       updateInterval = 10,
       concurrency = -1,
-      futureInterval = 10000,
+      futureInterval = 60 * 1000, // 60 seconds
     } = options
     this.onQueueFinish = onQueueFinish
     this.updateInterval = updateInterval
-    this.futureInterval = futureInterval
+    this.maxFutureInterval = futureInterval
     this.concurrency = concurrency
   }
 
@@ -346,9 +346,13 @@ export class Queue {
     }
 
     // Reschedule future jobs
-    const hasFutureJobs = await this.jobStore.hasFutureJobs()
-    if (this.futureInterval > -1 && hasFutureJobs) {
-      this.futureTimeoutId = setTimeout(() => this.scheduleQueue(), this.futureInterval)
+    const nearestJobSeconds = await this.jobStore.hasFutureJobs()
+
+    if (this.maxFutureInterval > -1 && nearestJobSeconds > -1) {
+      this.futureTimeoutId = setTimeout(
+        () => this.scheduleQueue(),
+        Math.min(Math.round(nearestJobSeconds) * 1000, this.maxFutureInterval),
+      )
     } else {
       this.onQueueFinish(this.executedJobs)
       this.isActive = false
