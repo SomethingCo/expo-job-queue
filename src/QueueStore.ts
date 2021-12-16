@@ -59,6 +59,7 @@ export class QueueStore {
           args,
           // @ts-ignore
           (_, { rows: { _array } }) =>
+            // @ts-ignore
             resolve((_array ?? []).map((row: any) => (row?.id ? mapColumnsToJob(row) : row))),
           (_, error) => {
             reject(error)

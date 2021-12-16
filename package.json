@@ -150,7 +150,6 @@
   },
   "dependencies": {
     "date-fns": "^2.21.3",
-    "expo-sqlite": "^9.1.0",
-    "react-native-unimodules": "^0.13.3"
+    "expo-sqlite": "^10.0.3"
   }
 }

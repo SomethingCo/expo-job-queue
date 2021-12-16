@@ -401,7 +401,7 @@ export class Queue {
 
       this.jobStore.removeJob(rawJob)
     } catch (error) {
-      worker.triggerFailure(job, error)
+      worker.triggerFailure(job, error as Error)
       const { attempts } = rawJob
       let { errors, failedAttempts, retryIn } = JSON.parse(rawJob.metaData)
       failedAttempts++
